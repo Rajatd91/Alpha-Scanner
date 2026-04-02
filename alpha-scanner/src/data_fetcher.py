@@ -129,6 +129,44 @@ def fetch_binance_oi(symbol: str = "BTCUSDT", period: str = "1h",
     return df
 
 
+# ─── 3.5. Binance Top Trader Long/Short Ratio ──────────────────────────────
+
+def fetch_binance_ls_ratio(symbol: str = "BTCUSDT", period: str = "1h",
+                           days: int = 90) -> pd.DataFrame:
+    """Fetch Top Trader Long/Short Ratio from Binance futures.
+    Note: Binance limits history to ~30-90 days.
+    """
+    url = "https://fapi.binance.com/futures/data/topLongShortAccountRatio"
+    limit = 500
+    end_ms = int(time.time() * 1000)
+    start_ms = end_ms - days * 24 * 3600 * 1000
+    
+    all_rows = []
+    current = start_ms
+    
+    while current < end_ms:
+        params = {
+            "symbol": symbol, "period": period,
+            "startTime": current, "limit": limit
+        }
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if not data:
+            break
+        all_rows.extend(data)
+        current = data[-1]["timestamp"] + 1
+        time.sleep(0.5)
+    
+    df = pd.DataFrame(all_rows)
+    if not df.empty and "longShortRatio" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df["ls_ratio"] = df["longShortRatio"].astype(float)
+        df = df[["timestamp", "ls_ratio"]].copy()
+        df.set_index("timestamp", inplace=True)
+    return df
+
+
 # ─── 4. Fear & Greed Index ─────────────────────────────────────────────────
 
 def fetch_fear_greed(days: int = 730) -> pd.DataFrame:
@@ -195,6 +233,13 @@ def fetch_all(symbol: str = "BTCUSDT", days: int = 730,
     except Exception as e:
         print(f"  OI fetch failed ({e}), will use empty df")
         oi = pd.DataFrame(columns=["open_interest", "oi_value"])
+        
+    print(f"Fetching top trader LS ratio for {symbol}...")
+    try:
+        ls = fetch_binance_ls_ratio(symbol, days=min(days, 90))
+    except Exception as e:
+        print(f"  LS Ratio fetch failed ({e}), will use empty df")
+        ls = pd.DataFrame(columns=["ls_ratio"])
     
     print("Fetching Fear & Greed index...")
     fg = fetch_fear_greed(days=days)
@@ -208,7 +253,7 @@ def fetch_all(symbol: str = "BTCUSDT", days: int = 730,
     
     result = {
         "ohlcv": ohlcv, "funding": funding,
-        "oi": oi, "fear_greed": fg, "dominance": dom
+        "oi": oi, "ls_ratio": ls, "fear_greed": fg, "dominance": dom
     }
     
     if save:

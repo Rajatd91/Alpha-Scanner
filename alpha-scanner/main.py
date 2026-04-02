@@ -39,8 +39,11 @@ def load_data(sym):
         
         dom_path = DATA_DIR / f"{sym}_dominance.parquet"
         dom = pd.read_parquet(dom_path) if dom_path.exists() else pd.DataFrame()
+
+        ls_path = DATA_DIR / f"{sym}_ls_ratio.parquet"
+        ls = pd.read_parquet(ls_path) if ls_path.exists() else pd.DataFrame()
         
-        return ohlcv, funding, fg, oi, dom
+        return ohlcv, funding, fg, oi, dom, ls
     except FileNotFoundError as e:
         print(f"Error loading data for {sym}: {e}")
         print("Please run with --fetch or run generate_sample_data.py first.")
@@ -141,10 +144,10 @@ def main():
         fetch_all(args.symbol, days=args.days)
     
     print(f"Loading data for {args.symbol}...")
-    ohlcv, funding, fg, oi, dom = load_data(sym)
+    ohlcv, funding, fg, oi, dom, ls = load_data(sym)
     
     print("Building composite signals...")
-    df = build_composite(ohlcv, funding, fg, oi, dom)
+    df = build_composite(ohlcv, funding, fg, oi, dom, ls)
     
     config = BacktestConfig(entry_threshold=0.5, vol_target=0.20, cost_bps=5)
     print("Running backtest...")

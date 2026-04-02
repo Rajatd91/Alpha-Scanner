@@ -41,15 +41,16 @@ cost_bps = st.sidebar.slider("Transaction cost (bps)", 0, 20, 5, 1)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Signal weights")
-w_funding = st.sidebar.slider("Funding rate", 0.0, 1.0, 0.25, 0.05)
-w_fg = st.sidebar.slider("Fear & Greed", 0.0, 1.0, 0.20, 0.05)
-w_oi = st.sidebar.slider("Open interest", 0.0, 1.0, 0.15, 0.05)
-w_dom = st.sidebar.slider("BTC dominance", 0.0, 1.0, 0.15, 0.05)
-w_mom = st.sidebar.slider("Price momentum", 0.0, 1.0, 0.25, 0.05)
+w_funding = st.sidebar.slider("Funding rate", 0.0, 1.0, 0.015, 0.05)
+w_fg = st.sidebar.slider("Fear & Greed", 0.0, 1.0, 0.073, 0.05)
+w_oi = st.sidebar.slider("Open interest", 0.0, 1.0, 0.092, 0.05)
+w_ls = st.sidebar.slider("Top Trader LS Ratio", 0.0, 1.0, 0.029, 0.05)
+w_dom = st.sidebar.slider("BTC dominance", 0.0, 1.0, 0.348, 0.05)
+w_mom = st.sidebar.slider("Price momentum", 0.0, 1.0, 0.444, 0.05)
 
 weights = {
     "sig_funding": w_funding, "sig_fear_greed": w_fg,
-    "sig_oi": w_oi, "sig_dominance": w_dom, "sig_momentum": w_mom
+    "sig_oi": w_oi, "sig_ls_ratio": w_ls, "sig_dominance": w_dom, "sig_momentum": w_mom
 }
 
 # ─── Load data ─────────────────────────────────────────────────────────────
@@ -66,16 +67,19 @@ def load_data(sym):
     dom_path = DATA_DIR / f"{sym}_dominance.parquet"
     dom = pd.read_parquet(dom_path) if dom_path.exists() else pd.DataFrame()
     
-    return ohlcv, funding, fg, oi, dom
+    ls_path = DATA_DIR / f"{sym}_ls_ratio.parquet"
+    ls = pd.read_parquet(ls_path) if ls_path.exists() else pd.DataFrame()
+    
+    return ohlcv, funding, fg, oi, dom, ls
 
 try:
-    ohlcv, funding, fg, oi, dom = load_data(sym)
+    ohlcv, funding, fg, oi, dom, ls = load_data(sym)
 except FileNotFoundError:
     st.error("Data files not found. Run `python generate_sample_data.py` first.")
     st.stop()
 
 # ─── Build signals & backtest ──────────────────────────────────────────────
-df = build_composite(ohlcv, funding, fg, oi, dom, weights=weights)
+df = build_composite(ohlcv, funding, fg, oi, dom, ls, weights=weights)
 
 config = BacktestConfig(
     entry_threshold=entry_thresh,

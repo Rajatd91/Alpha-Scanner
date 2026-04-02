@@ -59,6 +59,19 @@ def signal_oi_change(oi: pd.DataFrame, window: int = 168) -> pd.Series:
     return -z.rename("sig_oi")  # high OI growth = contrarian sell
 
 
+def signal_ls_ratio(ls: pd.DataFrame, window: int = 168) -> pd.Series:
+    """Top trader Long/Short ratio signal.
+    
+    Logic: When top traders skew heavily long compared to their rolling average,
+    we follow the smart money (trend-following).
+    """
+    if ls.empty or "ls_ratio" not in ls.columns:
+        return pd.Series(dtype=float, name="sig_ls_ratio")
+    
+    z = zscore(ls["ls_ratio"], window)
+    return z.rename("sig_ls_ratio")
+
+
 def signal_btc_dominance(dom: pd.DataFrame, window: int = 60) -> pd.Series:
     """BTC dominance momentum signal.
     
@@ -93,7 +106,7 @@ def signal_price_momentum(ohlcv: pd.DataFrame,
 
 def build_composite(ohlcv: pd.DataFrame, funding: pd.DataFrame,
                     fg: pd.DataFrame, oi: pd.DataFrame,
-                    dom: pd.DataFrame,
+                    dom: pd.DataFrame, ls: pd.DataFrame = pd.DataFrame(),
                     weights: dict = None) -> pd.DataFrame:
     """Build all individual signals and combine into a composite.
     
@@ -101,17 +114,18 @@ def build_composite(ohlcv: pd.DataFrame, funding: pd.DataFrame,
     OHLCV index. Missing values are forward-filled (daily signals → hourly).
     
     Returns a DataFrame with columns:
-      close, return, sig_funding, sig_fear_greed, sig_oi,
-      sig_dominance, sig_momentum, composite
+      close, return, sig_funding, sig_fear_greed, sig_oi, 
+      sig_ls_ratio, sig_dominance, sig_momentum, composite
     """
-    # Default equal weights
+    # Default weights from optimizer
     if weights is None:
         weights = {
-            "sig_funding": 0.25,
-            "sig_fear_greed": 0.20,
-            "sig_oi": 0.15,
-            "sig_dominance": 0.15,
-            "sig_momentum": 0.25,
+            "sig_funding": 0.015,
+            "sig_fear_greed": 0.073,
+            "sig_oi": 0.092,
+            "sig_ls_ratio": 0.029,
+            "sig_dominance": 0.348,
+            "sig_momentum": 0.444,
         }
     
     # Compute individual signals
@@ -119,6 +133,7 @@ def build_composite(ohlcv: pd.DataFrame, funding: pd.DataFrame,
     sigs["sig_funding"] = signal_funding_rate(funding)
     sigs["sig_fear_greed"] = signal_fear_greed(fg)
     sigs["sig_oi"] = signal_oi_change(oi)
+    sigs["sig_ls_ratio"] = signal_ls_ratio(ls)
     sigs["sig_dominance"] = signal_btc_dominance(dom)
     sigs["sig_momentum"] = signal_price_momentum(ohlcv)
     
