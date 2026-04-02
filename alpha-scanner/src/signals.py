@@ -73,18 +73,30 @@ def signal_ls_ratio(ls: pd.DataFrame, window: int = 168) -> pd.Series:
 
 
 def signal_btc_dominance(dom: pd.DataFrame, window: int = 60) -> pd.Series:
-    """BTC dominance momentum signal.
-    
-    Logic: Rising BTC dominance = risk-off (money fleeing alts to BTC).
-    For BTC itself: rising dominance is mildly bullish.
-    For alts (ETH): rising BTC dominance is bearish.
-    We return the z-score directly (positive = BTC dominance rising).
+    """BTC dominance signal.
+
+    Preferred: uses actual BTC dominance % (btc_dominance column) when
+    available from the CoinGecko global market cap chart endpoint.
+
+    Fallback: uses BTC market cap momentum (pct-change of btc_market_cap),
+    which correlates with dominance during BTC-specific rallies vs alt seasons
+    but is not identical.
+
+    Logic: Rising dominance = risk-off (capital rotating from alts to BTC).
+    Positive signal = BTC dominance rising = bullish for BTC, bearish for alts.
     """
-    if dom.empty or "btc_market_cap" not in dom.columns:
+    if dom.empty:
         return pd.Series(dtype=float, name="sig_dominance")
-    
-    dom_pct = dom["btc_market_cap"].pct_change()
-    z = zscore(dom_pct, window)
+
+    if "btc_dominance" in dom.columns:
+        # Actual dominance %: z-score the level directly
+        z = zscore(dom["btc_dominance"], window)
+    elif "btc_market_cap" in dom.columns:
+        # Proxy: z-score of pct-change in BTC market cap
+        z = zscore(dom["btc_market_cap"].pct_change(), window)
+    else:
+        return pd.Series(dtype=float, name="sig_dominance")
+
     return z.rename("sig_dominance")
 
 
