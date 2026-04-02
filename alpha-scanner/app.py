@@ -41,12 +41,12 @@ cost_bps = st.sidebar.slider("Transaction cost (bps)", 0, 20, 5, 1)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Signal weights")
-w_funding = st.sidebar.slider("Funding rate", 0.0, 1.0, 0.015, 0.05)
-w_fg = st.sidebar.slider("Fear & Greed", 0.0, 1.0, 0.073, 0.05)
-w_oi = st.sidebar.slider("Open interest", 0.0, 1.0, 0.092, 0.05)
-w_ls = st.sidebar.slider("Top Trader LS Ratio", 0.0, 1.0, 0.029, 0.05)
-w_dom = st.sidebar.slider("BTC dominance", 0.0, 1.0, 0.348, 0.05)
-w_mom = st.sidebar.slider("Price momentum", 0.0, 1.0, 0.444, 0.05)
+w_funding = st.sidebar.slider("Funding rate", 0.0, 1.0, 0.015, 0.001)
+w_fg = st.sidebar.slider("Fear & Greed", 0.0, 1.0, 0.073, 0.001)
+w_oi = st.sidebar.slider("Open interest", 0.0, 1.0, 0.092, 0.001)
+w_ls = st.sidebar.slider("Top Trader LS Ratio", 0.0, 1.0, 0.029, 0.001)
+w_dom = st.sidebar.slider("BTC dominance", 0.0, 1.0, 0.348, 0.001)
+w_mom = st.sidebar.slider("Price momentum", 0.0, 1.0, 0.444, 0.001)
 
 weights = {
     "sig_funding": w_funding, "sig_fear_greed": w_fg,
@@ -147,8 +147,11 @@ fig_sig = make_subplots(rows=len(sig_cols) + 1, cols=1, shared_xaxes=True,
 
 colors = ["#2962FF", "#00C853", "#FF6D00", "#AA00FF", "#00BFA5"]
 for i, col in enumerate(sig_cols):
+    # Plot the *weighted* signal contribution so sliders visibly impact the graphs!
+    weighted_signal = df[col] * weights.get(col, 1.0)
+    
     fig_sig.add_trace(go.Scatter(
-        x=df.index, y=df[col], name=col,
+        x=df.index, y=weighted_signal, name=col,
         line=dict(color=colors[i % len(colors)], width=1)
     ), row=i + 1, col=1)
     fig_sig.add_hline(y=0, line_dash="dot", line_color="gray", row=i + 1, col=1)
