@@ -57,6 +57,7 @@ weights = {
 
 @st.cache_data
 def load_data(sym):
+    _cache_buster = 1
     ohlcv = pd.read_parquet(DATA_DIR / f"{sym}_ohlcv.parquet")
     funding = pd.read_parquet(DATA_DIR / f"{sym}_funding.parquet")
     fg = pd.read_parquet(DATA_DIR / f"{sym}_fear_greed.parquet")
@@ -165,6 +166,7 @@ fig_sig.add_hline(y=0, line_dash="dot", line_color="gray",
 
 fig_sig.update_layout(height=200 * (len(sig_cols) + 1), showlegend=False,
                       margin=dict(l=50, r=20, t=30, b=20))
+fig_sig.update_yaxes(range=[-3, 3])
 st.plotly_chart(fig_sig, use_container_width=True)
 
 # ─── Signal decay analysis ─────────────────────────────────────────────────
