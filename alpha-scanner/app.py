@@ -116,7 +116,7 @@ fig_eq = make_subplots(rows=2, cols=1, shared_xaxes=True,
                        subplot_titles=["Equity ($)", "Drawdown"])
 
 # IS / OOS split line
-split_date = df_is.index[-1]
+split_date = int(df_is.index[-1].timestamp() * 1000)
 
 fig_eq.add_trace(go.Scatter(
     x=df.index, y=df["equity"], name="Equity",
