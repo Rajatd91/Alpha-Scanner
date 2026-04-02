@@ -70,10 +70,16 @@ def make_oi():
 
 
 def make_dominance():
-    """Synthetic BTC market cap (dominance proxy)."""
-    base = 800e9 + np.cumsum(np.random.normal(0, 2e9, HOURS // 24))
-    daily_idx = idx[::24][:len(base)]
-    return pd.DataFrame({"btc_market_cap": base}, index=daily_idx)
+    """Synthetic BTC dominance % — mean-reverting around 50%."""
+    n = HOURS // 24
+    dom = np.zeros(n)
+    dom[0] = 50.0
+    for i in range(1, n):
+        # Mean-reverting random walk
+        dom[i] = dom[i - 1] + np.random.normal(0, 0.3) - 0.05 * (dom[i - 1] - 50)
+    dom = np.clip(dom, 32, 68)
+    daily_idx = idx[::24][:n]
+    return pd.DataFrame({"btc_dominance": dom}, index=daily_idx)
 
 
 if __name__ == "__main__":

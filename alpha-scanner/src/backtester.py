@@ -132,3 +132,41 @@ def split_is_oos(df: pd.DataFrame, split_ratio: float = 0.6) -> tuple:
     n = len(df)
     split_idx = int(n * split_ratio)
     return df.iloc[:split_idx].copy(), df.iloc[split_idx:].copy()
+
+
+def walk_forward_validation(df: pd.DataFrame, n_folds: int = 4,
+                            config: BacktestConfig = None) -> pd.DataFrame:
+    """Walk-forward validation on the OOS period.
+
+    Mirrors the 60/40 IS/OOS split, then divides the OOS window into
+    n_folds equal slices and backtests each independently.  This checks
+    whether the strategy is consistent across different time windows rather
+    than relying on a single lucky split.
+
+    Returns a DataFrame with per-fold performance metrics as rows.
+    """
+    if config is None:
+        config = BacktestConfig()
+
+    _, df_oos = split_is_oos(df, 0.6)
+
+    n = len(df_oos)
+    fold_size = n // n_folds
+
+    rows = []
+    for i in range(n_folds):
+        fold = df_oos.iloc[i * fold_size:(i + 1) * fold_size].copy()
+        if len(fold) < 100:          # skip slivers that are too small to measure
+            continue
+        fold = run_backtest(fold, config)
+        m = compute_metrics(fold)
+        rows.append({
+            "Fold": f"Fold {i + 1}",
+            "Period": f"{fold.index[0].strftime('%Y-%m')} → {fold.index[-1].strftime('%Y-%m')}",
+            "Sharpe": float(m["Sharpe Ratio"]),
+            "Ann. Return": m["Ann. Return"],
+            "Max DD": m["Max Drawdown"],
+            "Win Rate": m["Win Rate"],
+        })
+
+    return pd.DataFrame(rows).set_index("Fold")

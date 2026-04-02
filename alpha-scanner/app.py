@@ -15,7 +15,7 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 
 from src.signals import build_composite, signal_decay, regime_performance
-from src.backtester import run_backtest, compute_metrics, split_is_oos, BacktestConfig
+from src.backtester import run_backtest, compute_metrics, split_is_oos, BacktestConfig, walk_forward_validation
 
 DATA_DIR = Path("data")
 
@@ -57,7 +57,6 @@ weights = {
 
 @st.cache_data
 def load_data(sym):
-    _cache_buster = 1
     ohlcv = pd.read_parquet(DATA_DIR / f"{sym}_ohlcv.parquet")
     funding = pd.read_parquet(DATA_DIR / f"{sym}_funding.parquet")
     fg = pd.read_parquet(DATA_DIR / f"{sym}_fear_greed.parquet")
@@ -78,6 +77,17 @@ try:
 except FileNotFoundError:
     st.error("Data files not found. Run `python generate_sample_data.py` first.")
     st.stop()
+
+# ─── Data coverage warnings ────────────────────────────────────────────────
+oi_pct = len(oi) / len(ohlcv) * 100 if not oi.empty else 0
+ls_pct = len(ls) / len(ohlcv) * 100 if not ls.empty else 0
+if oi_pct < 30 or ls_pct < 30:
+    st.warning(
+        f"**Limited history warning:** Open Interest covers {oi_pct:.0f}% and "
+        f"LS Ratio covers {ls_pct:.0f}% of the backtest window "
+        f"(Binance API caps these at ~90 days). These signals default to 0 for "
+        f"earlier periods — consider lowering their weights when using real data."
+    )
 
 # ─── Build signals & backtest ──────────────────────────────────────────────
 df = build_composite(ohlcv, funding, fg, oi, dom, ls, weights=weights)
@@ -224,6 +234,36 @@ fig_pos.update_layout(
     height=300, margin=dict(l=50, r=20, t=20, b=40)
 )
 st.plotly_chart(fig_pos, use_container_width=True)
+
+# ─── Walk-forward validation ───────────────────────────────────────────────
+st.markdown("---")
+st.subheader("Walk-Forward Validation")
+st.caption(
+    "The OOS window is split into 4 equal sub-periods and backtested independently. "
+    "A single IS/OOS split can be lucky — consistent Sharpe across all folds is a "
+    "much stronger signal of robustness."
+)
+
+try:
+    wf = walk_forward_validation(df, n_folds=4, config=config)
+
+    # Style: highlight positive Sharpe in green, negative in red
+    def colour_sharpe(val):
+        if isinstance(val, float):
+            color = "green" if val > 0.3 else ("orange" if val > 0 else "red")
+            return f"color: {color}; font-weight: bold"
+        return ""
+
+    st.dataframe(wf.style.applymap(colour_sharpe, subset=["Sharpe"]))
+
+    avg_sharpe = wf["Sharpe"].mean()
+    pos_folds = (wf["Sharpe"] > 0).sum()
+    st.caption(
+        f"Avg fold Sharpe: **{avg_sharpe:.2f}** | "
+        f"Profitable folds: **{pos_folds}/{len(wf)}**"
+    )
+except Exception as e:
+    st.warning(f"Walk-forward unavailable: {e}")
 
 # ─── Footer ────────────────────────────────────────────────────────────────
 st.markdown("---")

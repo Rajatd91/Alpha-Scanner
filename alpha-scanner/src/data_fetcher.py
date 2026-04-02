@@ -188,32 +188,52 @@ def fetch_fear_greed(days: int = 730) -> pd.DataFrame:
 # ─── 5. BTC Dominance (CoinGecko) ─────────────────────────────────────────
 
 def fetch_btc_dominance(days: int = 730) -> pd.DataFrame:
-    """Fetch BTC market dominance % from CoinGecko (free, no key for this)."""
-    url = "https://api.coingecko.com/api/v3/global"
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
-    current_dom = resp.json()["data"]["market_cap_percentage"]["btc"]
-    
-    # CoinGecko free tier doesn't give historical dominance easily
-    # Use market_chart for total market cap and BTC market cap to derive it
+    """Fetch BTC market dominance % from CoinGecko.
+
+    Attempts to compute actual dominance (BTC mcap / total mcap * 100) using
+    the global market cap chart endpoint.  If that endpoint requires a Pro key,
+    falls back to BTC market cap momentum (pct-change of btc_market_cap) which
+    is stored as-is so signals.py can handle both column layouts.
+    """
+    # Step 1 — BTC market cap (always available on free tier)
     btc_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
     params = {"vs_currency": "usd", "days": min(days, 365), "interval": "daily"}
     resp_btc = requests.get(btc_url, params=params, timeout=30)
     resp_btc.raise_for_status()
     btc_caps = resp_btc.json()["market_caps"]
-    
-    total_url = "https://api.coingecko.com/api/v3/global/market_cap_chart"
-    # This endpoint may require a key; fallback to approximation
-    # We'll use BTC market cap as a proxy signal (dominance ≈ btc_cap / total_cap)
-    
-    df = pd.DataFrame(btc_caps, columns=["timestamp_ms", "btc_market_cap"])
-    df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms").dt.normalize()
-    df["btc_market_cap"] = df["btc_market_cap"].astype(float)
-    df = df[["timestamp", "btc_market_cap"]].copy()
-    df.set_index("timestamp", inplace=True)
-    
-    # Derive dominance change as signal (rising btc_cap relative to its mean)
-    return df
+
+    df_btc = pd.DataFrame(btc_caps, columns=["timestamp_ms", "btc_market_cap"])
+    df_btc["timestamp"] = pd.to_datetime(df_btc["timestamp_ms"], unit="ms").dt.normalize()
+    df_btc["btc_market_cap"] = df_btc["btc_market_cap"].astype(float)
+    df_btc = df_btc[["timestamp", "btc_market_cap"]].set_index("timestamp")
+
+    # Step 2 — Try total market cap for actual dominance %
+    try:
+        total_url = "https://api.coingecko.com/api/v3/global/market_cap_chart"
+        params_t = {"days": min(days, 365), "vs_currency": "usd"}
+        resp_t = requests.get(total_url, params=params_t, timeout=30)
+        resp_t.raise_for_status()
+        raw = resp_t.json()
+        # Different API versions nest this differently
+        total_list = (
+            raw.get("market_cap_chart", {}).get("market_cap")
+            or raw.get("data", {}).get("market_cap_chart", {}).get("market_cap")
+            or []
+        )
+        if total_list:
+            df_tot = pd.DataFrame(total_list, columns=["timestamp_ms", "total_market_cap"])
+            df_tot["timestamp"] = pd.to_datetime(df_tot["timestamp_ms"], unit="ms").dt.normalize()
+            df_tot["total_market_cap"] = df_tot["total_market_cap"].astype(float)
+            df_tot = df_tot[["timestamp", "total_market_cap"]].set_index("timestamp")
+
+            df = df_btc.join(df_tot, how="inner")
+            df["btc_dominance"] = df["btc_market_cap"] / df["total_market_cap"] * 100
+            return df[["btc_dominance", "btc_market_cap"]]
+    except Exception:
+        pass  # Pro-key endpoint or format change — fall through to fallback
+
+    # Fallback: return BTC market cap only; signals.py uses pct-change as proxy
+    return df_btc
 
 
 # ─── Master fetcher ────────────────────────────────────────────────────────
